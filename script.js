@@ -395,16 +395,16 @@ function main() {
         canvasElement.onmousedown = handleMouseDown;
         document.onmouseup = handleMouseUp;
         document.onmousemove = handleMouseMove;
-        gl = canvasElement.getContext("webgl");
+        gl = canvasElement.getContext("webgl2");
     } catch (e) {
-        console.error("Could not create WebGL context: " + e);
-        showErrorToUser("Your browser doesn't support WebGL.");
+        console.error("Could not create WebGL2 context: " + e);
+        showErrorToUser("Your browser doesn't support WebGL2.");
         return false;
     }
     try {
         program = setupProgram(gl);
         textures = setupTextures(gl, program);
-        gl.getExtension("OES_texture_float");
+        gl.getExtension("EXT_color_buffer_float");
 
     } catch (e) {
         console.error(e.name + ": " + e.message);
@@ -486,8 +486,8 @@ function main() {
                 gl.bindTexture(gl.TEXTURE_2D, textures.depthStreamTexture);
                 gl.texImage2D(gl.TEXTURE_2D,
                     0,
-                    gl.RGBA,
-                    gl.RGBA,
+                    gl.R32F,
+                    gl.RED,
                     gl.FLOAT,
                     depthStreamElement);
             }
