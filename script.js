@@ -32,8 +32,9 @@ function showErrorToUser(message) {
 }
 
 function handleError(error) {
-    console.error(error.name + ": " + error.message);
-    showErrorToUser("Error " + error.name + ": " + error.message);
+    console.error(error);
+    showErrorToUser("Error:" + (error.name ? (error.name + ": " + error.message)
+                                           : error));
 }
 
 function handleMouseDown(event) {
@@ -157,212 +158,36 @@ function setupTextures(gl, program) {
     };
 }
 
-// Find the Realsense streams and select the RGB and Depth streams.
-//
-// devices: Result from `MediaDevices.enumerateDevices()`.
-//
-// Return a string with the camera name.
-function activateDepthCamera(devices) {
-    var videoDevices = devices
-        .filter((device) => device.kind == "videoinput");
-    if (videoDevices.length < 2) {
-        // The RGB and depth streams show up as separate cameras, so if we see
-        // only 1 camera, we can be sure it's not a depth camera.
-        console.log(videoDevices);
-        throw {
-            name: "NoDepthCamera",
-            message: "Did not detect any depth camera.",
-        };
-    }
-    var depthDevices = videoDevices
-        .filter((device) => device.label.indexOf("RealSense") !== -1 );
-    if (depthDevices.length < 2) {
-        console.log(videoDevices);
-        showErrorToUser("No Intel RealSense devices found. Trying anyway, " +
-                        "but results might look bad.");
-        depthDevices = videoDevices;
-    }
-
-    var cameraName = findCameraName(depthDevices[0].label);
-    // Select streams from these ids, so that some other camera doesn't get
-    // selected (e.g. if the user has another rgb camera).
-    var ids = depthDevices.map((device) => device.deviceId);
-
-    function videoKindNotSupported(error) {
-        showErrorToUser("Your browser version is too old and doesn't support \
-                        the 'videoKind: depth' constraint");
-        console.error(error);
-    }
-
-    // Select color stream.
-    var constraints = {
-        audio: false,
-        video: {
-            videoKind: { exact: "color" },
-            deviceId: { exact: ids },
-        },
-    };
-    navigator.mediaDevices.getUserMedia(constraints)
-        .then(function(stream) {
-            var video = document.getElementById("colorStream");
-            video.srcObject = stream;
-        })
-        .catch(videoKindNotSupported);
-
-    // Select depth stream.
-    var constraints2 = {
-        audio: false,
-        video: {
-            videoKind: { exact: "depth" },
-            deviceId: { exact: ids },
-            // Temporary workaround for the R200 camera.
-            // Without it, the videoKind=depth constraint might also select the
-            // infrared stream instead.
-            width: { ideal: 628 }
-        }
-    };
-    navigator.mediaDevices.getUserMedia(constraints2)
-        .then(function(stream) {
-            var video = document.getElementById("depthStream");
-            video.srcObject = stream;
-        })
-        .catch(videoKindNotSupported);
-
-    return cameraName;
-}
-
-// Return a Promise that outputs a string with the camera name.
+// Returned Promise's value is the depth stream.
 function setupCamera() {
-    if (!navigator.mediaDevices ||
-        !navigator.mediaDevices.enumerateDevices ||
-        !navigator.mediaDevices.getUserMedia) {
-        return Promise.reject(
-            "Your browser doesn't support the mediaDevices API.");
-    }
-    var constraints = {
-        video: {
-            videoKind: { exact: "depth" },
-        }
-    };
-    // The extra getUserMedia call is a workaround for issue
-    // https://bugs.chromium.org/p/chromium/issues/detail?id=702124
-    return navigator.mediaDevices.getUserMedia(constraints)
+    var depth_stream;
+    return DepthCamera.getDepthStream()
         .then(function(stream) {
-            return navigator.mediaDevices.enumerateDevices();
+            // Get the corresponding color camera stream.
+            depth_stream = stream;
+            // Usually, the color stream is of higher resolution compared to
+            // the depth stream. The use case here doesn't require the highest
+            // quality for color so use lower resolution if available.
+            const depth = depth_stream.getVideoTracks()[0];
+            // Chrome, starting with version 59, implements getSettings() API.
+            const width = (depth.getSettings) ? depth.getSettings().width
+                                              : undefined;
+            return DepthCamera.getColorStreamForDepthStream(stream, width);
         })
         .catch(function(error) {
-            showErrorToUser("Either you have no camera connected or your \
-                            browser version is too old and doesn't \
-                            support the 'videoKind: depth' constraint");
             throw error;
         })
-        .then(activateDepthCamera);
+        .then(function(color_stream) {
+            var video = document.getElementById("colorStream");
+            video.srcObject = color_stream;
+            var depth_video = document.getElementById("depthStream");
+            depth_video.srcObject = depth_stream;
+            return depth_stream;
+        });
 }
 
-// This should be removed once the MediaCapture-Depth API works.
-function findCameraName(label) {
-    if (label.includes("R200")) {
-        return "R200";
-    } else if (label.includes("Camera S") || label.includes("SR300")) {
-        return "SR300";
-    } else {
-        return label;
-    }
-}
-
-
-// Figure out the camera intristics based on the name of the camera.
-//
-// This should be rewritten once the MediaCapture-Depth API works - don't
-// hardcode the values based on camera name, but query it from the API.
-//
-// The documentation for these parameters is in the vertex shader in
-// `index.html`.
-function getCameraParameters(cameraName) {
-    var distortionModels = {
-        NONE: 0,
-        MODIFIED_BROWN_CONRADY: 1,
-        INVERSE_BROWN_CONRADY: 2,
-    };
-    var result;
-    if (cameraName === "R200")  {
-        result = {
-            depthScale: 0.001,
-            depthOffset: new Float32Array(
-                [ 233.3975067138671875, 179.2618865966796875 ]
-            ),
-            depthFocalLength: new Float32Array(
-                [ 447.320953369140625, 447.320953369140625 ]
-            ),
-            colorOffset: new Float32Array(
-                [ 311.841033935546875, 229.7513275146484375 ]
-            ),
-            colorFocalLength: new Float32Array(
-                [ 627.9630126953125, 634.02410888671875 ]
-            ),
-            depthToColor: [
-                0.99998325109481811523, 0.002231199527159333229, 0.00533978315070271492, 0,
-                -0.0021383403800427913666, 0.99984747171401977539, -0.017333013936877250671, 0,
-                -0.0053776423446834087372, 0.017321307212114334106, 0.99983555078506469727, 0,
-                -0.058898702263832092285, -0.00020283895719330757856, -0.0001998419174924492836, 1
-            ],
-            depthDistortionModel: distortionModels.NONE,
-            depthDistortioncoeffs: [ 0, 0, 0, 0, 0 ],
-            colorDistortionModel: distortionModels.MODIFIED_BROWN_CONRADY,
-            colorDistortioncoeffs: [
-                -0.078357703983783721924,
-                0.041351985186338424683,
-                -0.00025565386749804019928,
-                0.0012357287341728806496,
-                0
-            ],
-        };
-    } else if (cameraName === "SR300")  {
-        result =  {
-            depthScale: 0.0001249866472790017724,
-            depthOffset: new Float32Array(
-                [ 310.743988037109375, 245.1811676025390625 ]
-            ),
-            depthFocalLength: new Float32Array(
-                [ 475.900726318359375, 475.900726318359375]
-            ),
-            colorOffset: new Float32Array(
-                [ 312.073974609375, 241.969329833984375 ]
-            ),
-            colorFocalLength: new Float32Array(
-                [ 617.65087890625, 617.65093994140625 ]
-            ),
-            depthToColor: [
-                0.99998641014099121094, -0.0051436689682304859161, 0.00084982655243948101997, 0,
-                0.0051483912393450737, 0.99997079372406005859, -0.005651625804603099823, 0,
-                -0.00082073162775486707687, 0.0056559243239462375641, 0.99998366832733154297, 0,
-                0.025699997320771217346, -0.00073326355777680873871, 0.0039400043897330760956, 1
-            ],
-            depthDistortionModel: distortionModels.INVERSE_BROWN_CONRADY,
-            depthDistortioncoeffs: [
-                0.14655706286430358887,
-                0.078352205455303192139,
-                0.0026113723870366811752,
-                0.0029218809213489294052,
-                0.066788062453269958496,
-            ],
-            colorDistortionModel: distortionModels.NONE,
-            colorDistortioncoeffs: [ 0, 0, 0, 0, 0 ],
-        };
-    } else {
-        throw {
-            name: "CameraNotSupported",
-            message: "Sorry, your camera '" + cameraName + "' is not supported",
-        };
-    }
-    // This also de-normalizes the depth value (it's originally a 16-bit
-    // integer normalized into a float between 0 and 1).
-    result.depthScale = result.depthScale * 65535;
-    return result;
-}
-
-// Take the parameters returned from `getCameraParameters` and upload them as
-// uniforms into the shaders.
+// Take the parameters returned from `DepthCamera.getCameraCalibration` and
+// upload them as uniforms into the shaders.
 function uploadCameraParameters(gl, program, parameters) {
     var shaderVar = gl.getUniformLocation(program, "u_depth_scale");
     gl.uniform1f(shaderVar, parameters.depthScale);
@@ -414,8 +239,8 @@ function main() {
 
 
     setupCamera()
-        .then(function(cameraName) {
-            var cameraParameters = getCameraParameters(cameraName);
+        .then(function(depth) {
+            var cameraParameters = DepthCamera.getCameraCalibration(depth);
             uploadCameraParameters(gl, program, cameraParameters);
         })
         .catch(handleError);

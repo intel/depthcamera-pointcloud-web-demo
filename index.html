@@ -18,6 +18,7 @@ limitations under the License.
     <head>
         <meta charset="utf-8"/>
         <script type="text/javascript" src="script.js"></script>
+        <script type="text/javascript" src="depth-camera.js"></script>
         <script type="text/javascript" src="third_party/gl-matrix.js"></script>
         <script id="vertexshader" type="x-shader/x-vertex">
             precision highp float;
@@ -27,6 +28,8 @@ limitations under the License.
             ////////////////////////////////////////////////////////////////////
             // Parameters of the currently used camera, see
             // https://github.com/IntelRealSense/librealsense/blob/master/doc/projection.md
+            // and the documentation at
+            // https://w3c.github.io/mediacapture-depth/#synchronizing-depth-and-color-video-rendering
 
             // The possible values for u_depth_distortion_model and
             // u_color_distortion_model.
