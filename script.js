@@ -33,8 +33,7 @@ function showErrorToUser(message) {
 
 function handleError(error) {
     console.error(error);
-    showErrorToUser("Error:" + (error.name ? (error.name + ": " + error.message)
-                                           : error));
+    showErrorToUser(error.name ? (error.name + ": " + error.message) : error);
 }
 
 function handleMouseDown(event) {
@@ -158,32 +157,23 @@ function setupTextures(gl, program) {
     };
 }
 
-// Returned Promise's value is the depth stream.
-function setupCamera() {
-    var depth_stream;
-    return DepthCamera.getDepthStream()
-        .then(function(stream) {
-            // Get the corresponding color camera stream.
-            depth_stream = stream;
-            // Usually, the color stream is of higher resolution compared to
-            // the depth stream. The use case here doesn't require the highest
-            // quality for color so use lower resolution if available.
-            const depth = depth_stream.getVideoTracks()[0];
-            // Chrome, starting with version 59, implements getSettings() API.
-            const width = (depth.getSettings) ? depth.getSettings().width
-                                              : undefined;
-            return DepthCamera.getColorStreamForDepthStream(stream, width);
-        })
-        .catch(function(error) {
-            throw error;
-        })
-        .then(function(color_stream) {
-            var video = document.getElementById("colorStream");
-            video.srcObject = color_stream;
-            var depth_video = document.getElementById("depthStream");
-            depth_video.srcObject = depth_stream;
-            return depth_stream;
-        });
+// Returns the depth stream
+async function setupCamera() {
+    var depth_stream = await DepthCamera.getDepthStream();
+    // Usually, the color stream is of higher resolution compared to
+    // the depth stream. The use case here doesn't require the highest
+    // quality for color so use lower resolution if available.
+    const depth = depth_stream.getVideoTracks()[0];
+    // Chrome, starting with version 59, implements getSettings() API.
+    const width = (depth.getSettings) ? depth.getSettings().width
+                                      : undefined;
+    var color_stream = await DepthCamera.getColorStreamForDepthStream(depth_stream, width);
+
+    var video = document.getElementById("colorStream");
+    video.srcObject = color_stream;
+    var depth_video = document.getElementById("depthStream");
+    depth_video.srcObject = depth_stream;
+    return depth_stream;
 }
 
 // Take the parameters returned from `DepthCamera.getCameraCalibration` and
