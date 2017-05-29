@@ -19,7 +19,7 @@ DepthCamera.getDepthStream = async function () {
         !navigator.mediaDevices.getUserMedia)
         throw new Error("Your browser doesn't support the mediaDevices API.");
 
-    const constraints = {
+    let constraints = {
         audio: false,
         video: {
             // We don't use videoKind as it is still under development.
@@ -32,12 +32,27 @@ DepthCamera.getDepthStream = async function () {
             frameRate: { ideal:110 },
         }
     }
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    const track = stream.getVideoTracks()[0];
+    let stream = await navigator.mediaDevices.getUserMedia(constraints);
+    let track = stream.getVideoTracks()[0];
     if (track.label.indexOf("RealSense") == -1) {
         throw new Error(chromeVersion() < 58 ?
             "Your browser version is too old. Get Chrome version 58 or later." :
             "No RealSense camera connected.");
+    }
+
+    if (track.getSettings && track.getSettings().frameRate > 60) {
+        // After Chrome 59, returned track is scaled to 628 and frameCount 110.
+        // We got the deviceId, so we the deviceId to select the stream with
+        // default resolution and frameRate.
+        track.stop();
+        constraints = {
+            audio: false,
+            video: {
+                deviceId: {exact: track.getSettings().deviceId},
+            }
+        }
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        track = stream.getVideoTracks()[0];
     }
     return stream;
 }
