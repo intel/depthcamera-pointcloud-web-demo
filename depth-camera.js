@@ -14,6 +14,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+DepthCamera.getStreams = async function() {
+    var depth_stream = await DepthCamera.getDepthStream();
+    // Usually, the color stream is of higher resolution compared to
+    // the depth stream. The use case here doesn't require the highest
+    // quality for color so use lower resolution if available.
+    const depth = depth_stream.getVideoTracks()[0];
+    // Chrome, starting with version 59, implements getSettings() API.
+    const width = (depth.getSettings) ? depth.getSettings().width
+                                      : undefined;
+    var color_stream =
+        await DepthCamera.getColorStreamForDepthStream(depth_stream, width);
+    return [depth_stream, color_stream];
+}
+
 DepthCamera.getDepthStream = async function () {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices ||
         !navigator.mediaDevices.getUserMedia)

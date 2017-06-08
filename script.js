@@ -157,23 +157,15 @@ function setupTextures(gl, program) {
     };
 }
 
-// Returns the depth stream
+// Returns the calibration data.
 async function setupCamera() {
-    var depth_stream = await DepthCamera.getDepthStream();
-    // Usually, the color stream is of higher resolution compared to
-    // the depth stream. The use case here doesn't require the highest
-    // quality for color so use lower resolution if available.
-    const depth = depth_stream.getVideoTracks()[0];
-    // Chrome, starting with version 59, implements getSettings() API.
-    const width = (depth.getSettings) ? depth.getSettings().width
-                                      : undefined;
-    var color_stream = await DepthCamera.getColorStreamForDepthStream(depth_stream, width);
-
+    var [depth_stream, color_stream] = await DepthCamera.getStreams();
     var video = document.getElementById("colorStream");
     video.srcObject = color_stream;
     var depth_video = document.getElementById("depthStream");
     depth_video.srcObject = depth_stream;
-    return depth_stream;
+    var parameters = DepthCamera.getCameraCalibration(depth_stream);
+    return parameters;
 }
 
 // Take the parameters returned from `DepthCamera.getCameraCalibration` and
@@ -229,8 +221,7 @@ function main() {
 
 
     setupCamera()
-        .then(function(depth) {
-            var cameraParameters = DepthCamera.getCameraCalibration(depth);
+        .then(function(cameraParameters) {
             uploadCameraParameters(gl, program, cameraParameters);
         })
         .catch(handleError);
