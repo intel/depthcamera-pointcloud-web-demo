@@ -64,31 +64,6 @@ async function setupCamera() {
     return parameters;
 }
 
-// Take the parameters returned from `DepthCamera.getCameraCalibration` and
-// upload them as uniforms into the shaders.
-function uploadCameraParameters(gl, program, parameters) {
-    var shaderVar = gl.getUniformLocation(program, "u_depth_scale");
-    gl.uniform1f(shaderVar, parameters.depthScale);
-    shaderVar = gl.getUniformLocation(program, "u_depth_focal_length");
-    gl.uniform2fv(shaderVar, parameters.depthFocalLength);
-    shaderVar = gl.getUniformLocation(program, "u_depth_offset");
-    gl.uniform2fv(shaderVar, parameters.depthOffset);
-    shaderVar = gl.getUniformLocation(program, "u_depth_distortion_model");
-    gl.uniform1i(shaderVar, parameters.depthDistortionModel);
-    shaderVar = gl.getUniformLocation(program, "u_depth_distortion_coeffs");
-    gl.uniform1fv(shaderVar, parameters.depthDistortioncoeffs);
-    shaderVar = gl.getUniformLocation(program, "u_color_focal_length");
-    gl.uniform2fv(shaderVar, parameters.colorFocalLength);
-    shaderVar = gl.getUniformLocation(program, "u_color_offset");
-    gl.uniform2fv(shaderVar, parameters.colorOffset);
-    shaderVar = gl.getUniformLocation(program, "u_color_distortion_model");
-    gl.uniform1i(shaderVar, parameters.colorDistortionModel);
-    shaderVar = gl.getUniformLocation(program, "u_color_distortion_coeffs");
-    gl.uniform1fv(shaderVar, parameters.colorDistortioncoeffs);
-    shaderVar = gl.getUniformLocation(program, "u_depth_to_color");
-    gl.uniformMatrix4fv(shaderVar, false, parameters.depthToColor);
-}
-
 function main() {
     "use strict";
 
@@ -116,7 +91,7 @@ function main() {
 
     setupCamera()
         .then(function(cameraParameters) {
-            uploadCameraParameters(gl, program, cameraParameters);
+            //uploadCameraParameters(gl, program, cameraParameters);
         })
         .catch(handleError);
 
@@ -138,7 +113,6 @@ function main() {
                 var shaderDepthTextureSize =
                     gl.getUniformLocation(program, "u_depth_texture_size");
                 gl.uniform2f(shaderDepthTextureSize, width, height);
-
                 var shaderColorTextureSize =
                     gl.getUniformLocation(program, "u_color_texture_size");
                 gl.uniform2f(shaderColorTextureSize,
@@ -168,9 +142,6 @@ function main() {
                     2, gl.FLOAT, false, 0, 0);
                 ranOnce = true;
             }
-            var shaderMvp = gl.getUniformLocation(program, "u_mvp");
-            gl.uniformMatrix4fv(shaderMvp, false, getMvpMatrix(width, height));
-
             try {
                 // Upload the camera frame for both the RGB camera and depth.
                 gl.activeTexture(gl.TEXTURE0);
