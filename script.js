@@ -64,6 +64,17 @@ async function setupCamera() {
     return parameters;
 }
 
+// Take the parameters returned from `DepthCamera.getCameraCalibration` and
+// upload them as uniforms into the shaders.
+function uploadCameraParameters(gl, program, parameters) {
+    var shaderVar = gl.getUniformLocation(program, "u_depth_scale");
+    gl.uniform1f(shaderVar, parameters.depthScale);
+    shaderVar = gl.getUniformLocation(program, "u_depth_focal_length");
+    gl.uniform2fv(shaderVar, parameters.depthFocalLength);
+    shaderVar = gl.getUniformLocation(program, "u_depth_offset");
+    gl.uniform2fv(shaderVar, parameters.depthOffset);
+}
+
 function main() {
     "use strict";
 
@@ -91,7 +102,7 @@ function main() {
 
     setupCamera()
         .then(function(cameraParameters) {
-            //uploadCameraParameters(gl, program, cameraParameters);
+            uploadCameraParameters(gl, program, cameraParameters);
         })
         .catch(handleError);
 
@@ -142,6 +153,9 @@ function main() {
                     2, gl.FLOAT, false, 0, 0);
                 ranOnce = true;
             }
+            var shaderMvp = gl.getUniformLocation(program, "u_mvp");
+            gl.uniformMatrix4fv(shaderMvp, false, getMvpMatrix(width, height));
+
             try {
                 // Upload the camera frame for both the RGB camera and depth.
                 gl.activeTexture(gl.TEXTURE0);

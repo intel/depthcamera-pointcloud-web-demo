@@ -22,6 +22,26 @@ limitations under the License.
         <script type="text/javascript" src="depth-camera.js"></script>
         <script type="text/javascript" src="third_party/gl-matrix.js"></script>
         <script id="vertexshader" type="x-shader/x-vertex">
+            precision highp float;
+            // Run a vertex shader instance for each depth data point to create
+            // 3D model of the data (pointcloud).
+
+            ////////////////////////////////////////////////////////////////////
+            // Parameters of the currently used camera, see
+            // https://github.com/IntelRealSense/librealsense/blob/master/doc/projection.md
+            // and the documentation at
+            // https://w3c.github.io/mediacapture-depth/#synchronizing-depth-and-color-video-rendering
+
+            uniform float u_depth_scale;
+            // Center of projection of the depth camera data.
+            uniform vec2 u_depth_offset;
+            // Focal length of the depth data.
+            uniform vec2 u_depth_focal_length;
+            ////////////////////////////////////////////////////////////////////
+
+            // Model-View-Projection matrix.
+            uniform mat4 u_mvp;
+
             // All of the depth data.
             uniform sampler2D u_depth_texture;
             // Index of the depth_texture pixel that we are processing in this
@@ -35,13 +55,34 @@ limitations under the License.
             uniform vec2 u_color_texture_size;
             varying float v_depth;
 
+            // Convert the index of the depth data (ranged from [0, 0] to
+            // [u_depth_texture_size.x, u_depth_texture_size.y]) into a position
+            // in 3D space. The `depth` parameter needs to be in meters.
+            // This should be equivalent to what `rs_deproject_pixel_to_point()`
+            // in librealsense does.
+            vec4 depth_deproject(vec2 index, float depth) {
+                vec2 position2d = (index - u_depth_offset) / u_depth_focal_length;
+                return vec4(position2d * depth, depth, 1.0);
+            }
+
             void main() {
+                // Get the texture coordinates in range from [0, 0] to [1, 1]
                 vec2 depth_texture_coord = a_depth_texture_index
                                          / u_depth_texture_size;
+                // The values of R, G and B should be equal, so we can just
+                // select any of them.
                 float depth = texture2D(u_depth_texture,
                                         depth_texture_coord).r;
+                // For example, a value of 1.5 means the current point is 1.5
+                // meters away.
+                float depth_scaled = u_depth_scale * depth;
                 v_depth = depth * 10.0;
-                gl_Position = vec4(depth_texture_coord, 0, 1);
+                // X and Y are the position within the depth texture (adjusted
+                // so that it matches the position of the RGB texture), Z is
+                // the depth.
+                vec4 position = depth_deproject(a_depth_texture_index,
+                                                depth_scaled);
+                gl_Position = u_mvp * position;
             }
         </script>
         <script id="fragmentshader" type="x-shader/x-fragment">
