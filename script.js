@@ -73,6 +73,20 @@ function uploadCameraParameters(gl, program, parameters) {
     gl.uniform2fv(shaderVar, parameters.depthFocalLength);
     shaderVar = gl.getUniformLocation(program, "u_depth_offset");
     gl.uniform2fv(shaderVar, parameters.depthOffset);
+    shaderVar = gl.getUniformLocation(program, "u_depth_distortion_model");
+    gl.uniform1i(shaderVar, parameters.depthDistortionModel);
+    shaderVar = gl.getUniformLocation(program, "u_depth_distortion_coeffs");
+    gl.uniform1fv(shaderVar, parameters.depthDistortioncoeffs);
+    shaderVar = gl.getUniformLocation(program, "u_color_focal_length");
+    gl.uniform2fv(shaderVar, parameters.colorFocalLength);
+    shaderVar = gl.getUniformLocation(program, "u_color_offset");
+    gl.uniform2fv(shaderVar, parameters.colorOffset);
+    shaderVar = gl.getUniformLocation(program, "u_color_distortion_model");
+    gl.uniform1i(shaderVar, parameters.colorDistortionModel);
+    shaderVar = gl.getUniformLocation(program, "u_color_distortion_coeffs");
+    gl.uniform1fv(shaderVar, parameters.colorDistortioncoeffs);
+    shaderVar = gl.getUniformLocation(program, "u_depth_to_color");
+    gl.uniformMatrix4fv(shaderVar, false, parameters.depthToColor);
 }
 
 function main() {
@@ -124,6 +138,7 @@ function main() {
                 var shaderDepthTextureSize =
                     gl.getUniformLocation(program, "u_depth_texture_size");
                 gl.uniform2f(shaderDepthTextureSize, width, height);
+
                 var shaderColorTextureSize =
                     gl.getUniformLocation(program, "u_color_texture_size");
                 gl.uniform2f(shaderColorTextureSize,
