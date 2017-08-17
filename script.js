@@ -170,13 +170,14 @@ async function setupCamera() {
 
 // Take the parameters returned from `DepthCamera.getCameraCalibration` and
 // upload them as uniforms into the shaders.
-function uploadCameraParameters(gl, program, parameters) {
+function uploadCameraParameters(gl, program, parameters, width, height) {
     var shaderVar = gl.getUniformLocation(program, "u_depth_scale");
     gl.uniform1f(shaderVar, parameters.depthScale);
+    var depthIntrinsics = parameters.getDepthIntrinsics(width, height);
     shaderVar = gl.getUniformLocation(program, "u_depth_focal_length");
-    gl.uniform2fv(shaderVar, parameters.depthFocalLength);
+    gl.uniform2fv(shaderVar, depthIntrinsics.focalLength);
     shaderVar = gl.getUniformLocation(program, "u_depth_offset");
-    gl.uniform2fv(shaderVar, parameters.depthOffset);
+    gl.uniform2fv(shaderVar, depthIntrinsics.offset);
     shaderVar = gl.getUniformLocation(program, "u_depth_distortion_model");
     gl.uniform1i(shaderVar, parameters.depthDistortionModel);
     shaderVar = gl.getUniformLocation(program, "u_depth_distortion_coeffs");
@@ -193,7 +194,7 @@ function uploadCameraParameters(gl, program, parameters) {
     gl.uniformMatrix4fv(shaderVar, false, parameters.depthToColor);
 }
 
-function main() {
+async function main() {
     "use strict";
 
     var gl, program, textures;
@@ -220,11 +221,7 @@ function main() {
     }
 
 
-    setupCamera()
-        .then(function(cameraParameters) {
-            uploadCameraParameters(gl, program, cameraParameters);
-        })
-        .catch(handleError);
+    var cameraParameters = await setupCamera().catch(handleError);
 
     var colorStreamElement = document.getElementById("colorStream");
     var depthStreamElement = document.getElementById("depthStream");
@@ -241,6 +238,8 @@ function main() {
             var width = depthStreamElement.videoWidth;
             var height = depthStreamElement.videoHeight;
             if ( ! ranOnce ) {
+                uploadCameraParameters(gl, program, cameraParameters, width,
+                                       height);
                 var shaderDepthTextureSize =
                     gl.getUniformLocation(program, "u_depth_texture_size");
                 gl.uniform2f(shaderDepthTextureSize, width, height);
