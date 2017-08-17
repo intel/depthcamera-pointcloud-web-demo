@@ -20,11 +20,8 @@ DepthCamera.getStreams = async function() {
     // the depth stream. The use case here doesn't require the highest
     // quality for color so use lower resolution if available.
     const depth = depth_stream.getVideoTracks()[0];
-    // Chrome, starting with version 59, implements getSettings() API.
-    const width = (depth.getSettings) ? depth.getSettings().width
-                                      : undefined;
     var color_stream =
-        await DepthCamera.getColorStreamForDepthStream(depth_stream, width);
+        await DepthCamera.getColorStreamForDepthStream(depth_stream);
     return [depth_stream, color_stream];
 }
 
@@ -39,11 +36,11 @@ DepthCamera.getDepthStream = async function () {
             // We don't use videoKind as it is still under development.
             // videoKind: {exact:"depth"}, R200 related hack: prefer
             // depth (width = 628) to IR (width = 641) stream.
-            width: { ideal: 628, max: 640 },
+            width: {ideal: 628},
 
             // SR300 depth camera enables capture at 110 frames per
             // second.
-            frameRate: { ideal:110 },
+            frameRate: {ideal: 110},
         }
     }
     let stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -63,6 +60,7 @@ DepthCamera.getDepthStream = async function () {
             audio: false,
             video: {
                 deviceId: {exact: track.getSettings().deviceId},
+                frameRate: {max: 60}
             }
         }
         stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -72,8 +70,7 @@ DepthCamera.getDepthStream = async function () {
 }
 
 // Call the method after getting depth_stream using getDepthStream.
-DepthCamera.getColorStreamForDepthStream = async function(depth_stream,
-    ideal_width = undefined) {
+DepthCamera.getColorStreamForDepthStream = async function(depth_stream) {
     // To get color stream from the same physical device providing the depth
     // stream, we will use groupId, once it is implemented:
     // See https://crbug.com/627793
@@ -91,10 +88,15 @@ DepthCamera.getColorStreamForDepthStream = async function(depth_stream,
             MediaStreamTrack getSettings() API is not available. Try
             with Chromium version > 59.`);
     }
-    const devices = all_devices
-        .filter((device) => (device.kind == "videoinput" &&
+    const devices = (navigator.appVersion.indexOf("Win") == -1)
+        ? all_devices.filter((device) => (device.kind == "videoinput" &&
             device.label.indexOf("RealSense") !== -1 &&
+            device.deviceId != depth_device_id))
+        : all_devices.filter((device) => (device.kind == "videoinput" &&
+            device.label.indexOf("RealSense") !== -1 &&
+            device.label.indexOf("RGB") !== -1 &&
             device.deviceId != depth_device_id));
+
     if (devices.length < 1) {
         throw new Error("No RealSense camera connected.");
     }
@@ -103,21 +105,13 @@ DepthCamera.getColorStreamForDepthStream = async function(depth_stream,
     const ids = devices.map((device) => device.deviceId);
 
     // Select color stream.
-    // Color stream tracks have larger resolution than depth stream
-    // tracks. If we cannot use deviceId to select, for now, we need
-    // to misuse width.
-    ideal_width = ids.length == 1 ? ideal_width : 1280;
-    const constraints = ideal_width ?
-        {
-            video: {
-                width: {ideal:ideal_width},
-                deviceId: {exact: ids},
-            },
-        } : {
-            video: {
-                deviceId: {exact: ids},
-            },
-        };
+    const constraints = {
+        video: {
+            width: 640,
+            height: 480,
+            deviceId: {exact: ids},
+        },
+    };
     var stream = await navigator.mediaDevices.getUserMedia(constraints);
     return stream;
 }
@@ -134,6 +128,7 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
     const label = depth_stream.getVideoTracks()[0].label;
     const cameraName = label.includes("R200") ? "R200"
         : (label.includes("Camera S") || label.includes("SR300")) ? "SR300"
+        : label.includes("ZR300") ? "ZR300"
         : label;
 
     var distortionModels = {
@@ -145,17 +140,27 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
     if (cameraName === "R200")  {
         result = {
             depthScale: 0.001,
-            depthOffset: new Float32Array(
-                [ 233.3975067138671875, 179.2618865966796875 ]
-            ),
-            depthFocalLength: new Float32Array(
-                [ 447.320953369140625, 447.320953369140625 ]
-            ),
+            getDepthIntrinsics: function(width, height) {
+                if (width == 628 && height == 469) {
+                    return {
+                        offset: [305.558075, 233.5],
+                        focalLength: [582.154968, 582.154968],
+                    };
+                } else if (width == 628 && height == 361) {
+                    return {
+                        offset: [233.3975067138671875, 179.2618865966796875],
+                        focalLength: [447.320953369140625, 447.320953369140625],
+                    };
+                } else {
+                    throw new Error("Depth intrinsics for size " + width + "x" +
+                                     height + " are not available.");
+                }
+            },
             colorOffset: new Float32Array(
-                [ 311.841033935546875, 229.7513275146484375 ]
+                [311.841033935546875, 229.7513275146484375]
             ),
             colorFocalLength: new Float32Array(
-                [ 627.9630126953125, 634.02410888671875 ]
+                [627.9630126953125, 634.02410888671875]
             ),
             depthToColor: [
                 0.99998325109481811523, 0.002231199527159333229, 0.00533978315070271492, 0,
@@ -164,7 +169,7 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
                 -0.058898702263832092285, -0.00020283895719330757856, -0.0001998419174924492836, 1
             ],
             depthDistortionModel: distortionModels.NONE,
-            depthDistortioncoeffs: [ 0, 0, 0, 0, 0 ],
+            depthDistortioncoeffs: [0, 0, 0, 0, 0],
             colorDistortionModel: distortionModels.MODIFIED_BROWN_CONRADY,
             colorDistortioncoeffs: [
                 -0.078357703983783721924,
@@ -177,17 +182,22 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
     } else if (cameraName === "SR300")  {
         result =  {
             depthScale: 0.0001249866472790017724,
-            depthOffset: new Float32Array(
-                [ 310.743988037109375, 245.1811676025390625 ]
-            ),
-            depthFocalLength: new Float32Array(
-                [ 475.900726318359375, 475.900726318359375]
-            ),
+            getDepthIntrinsics: function(width, height) {
+                if (width == 640 && height == 480) {
+                    return {
+                        offset: [310.743988037109375, 245.1811676025390625],
+                        focalLength: [475.900726318359375, 475.900726318359375],
+                    };
+                } else {
+                    throw new Error("Depth intrinsics for size " + width + "x" +
+                                     height + " are not available.");
+                }
+            },
             colorOffset: new Float32Array(
-                [ 312.073974609375, 241.969329833984375 ]
+                [312.073974609375, 241.969329833984375]
             ),
             colorFocalLength: new Float32Array(
-                [ 617.65087890625, 617.65093994140625 ]
+                [617.65087890625, 617.65093994140625]
             ),
             depthToColor: [
                 0.99998641014099121094, -0.0051436689682304859161, 0.00084982655243948101997, 0,
@@ -204,7 +214,49 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
                 0.066788062453269958496,
             ],
             colorDistortionModel: distortionModels.NONE,
-            colorDistortioncoeffs: [ 0, 0, 0, 0, 0 ],
+            colorDistortioncoeffs: [0, 0, 0, 0, 0],
+        };
+    } else if (cameraName === "ZR300")  {
+        result = {
+            depthScale: 0.00100000005,
+            getDepthIntrinsics: function(width, height) {
+                if (width == 628 && height == 469) {
+                    return {
+                        offset: [309.912567, 234.410904],
+                        focalLength: [575.729980, 575.729980],
+                    };
+                } else if (width == 628 && height == 361) {
+                    return {
+                        offset: [238.683838, 180.205521],
+                        focalLength: [445.920288, 445.920288],
+                    };
+                } else {
+                    throw new Error("Depth intrinsics for size " + width + "x" +
+                                     height + " are not available.");
+                }
+            },
+            colorOffset: new Float32Array(
+                [312.271545, 233.118652]
+            ),
+            colorFocalLength: new Float32Array(
+                [616.316895, 617.343323]
+            ),
+            depthToColor: [
+                0.999995947, 0.00140406948, 0.00246621366, 0,
+                -0.00140700850, 0.999998271, 0.00119038881, 0,
+                -0.00246453821, -0.00119385391, 0.999996245, 0,
+                -0.0587307774, 7.03283295e-05, 0.000553227146, 1
+            ],
+            depthDistortionModel: distortionModels.NONE,
+            depthDistortioncoeffs: [0, 0, 0, 0, 0],
+            colorDistortionModel: distortionModels.MODIFIED_BROWN_CONRADY,
+            colorDistortioncoeffs: [
+                0.0727398321,
+                -0.138192296,
+                0.000800351670,
+                0.000444319186,
+                0
+            ],
         };
     } else {
         throw {
