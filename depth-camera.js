@@ -51,7 +51,7 @@ DepthCamera.getDepthStream = async function () {
             "No RealSense camera connected.");
     }
 
-    if (track.getSettings && track.getSettings().frameRate > 60) {
+    if (track.getSettings && track.getSettings().frameRate > 60.01) {
         // After Chrome 59, returned track is scaled to 628 and frameCount 110.
         // We got the deviceId, so we the deviceId to select the stream with
         // default resolution and frameRate.
@@ -129,6 +129,7 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
     const cameraName = label.includes("R200") ? "R200"
         : (label.includes("Camera S") || label.includes("SR300")) ? "SR300"
         : label.includes("ZR300") ? "ZR300"
+        : label.includes(") 4") ? "generic4"
         : label;
 
     var distortionModels = {
@@ -162,6 +163,8 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
             colorFocalLength: new Float32Array(
                 [627.9630126953125, 634.02410888671875]
             ),
+            // Rotation [0..2] goes to 1st column, [3..6] to second, etc. The
+            // row at the bottom is translation.
             depthToColor: [
                 0.99998325109481811523, 0.002231199527159333229, 0.00533978315070271492, 0,
                 -0.0021383403800427913666, 0.99984747171401977539, -0.017333013936877250671, 0,
@@ -257,6 +260,37 @@ DepthCamera.getCameraCalibration = function(depth_stream) {
                 0.000444319186,
                 0
             ],
+        };
+    } else if (cameraName === "generic4")  {
+        result = {
+            depthScale: 0.00100000005,
+            getDepthIntrinsics: function(width, height) {
+                if (width == 640 && height == 480) {
+                    return {
+                        offset: [321.17535400390625, 248.4362640380859375],
+                        focalLength: [402.60308837890625, 402.60308837890625],
+                    };
+                } else {
+                    throw new Error("Depth intrinsics for size " + width + "x" +
+                                     height + " are not available.");
+                }
+            },
+            colorOffset: new Float32Array(
+                [331.870422363281, 242.991546630859]
+            ),
+            colorFocalLength: new Float32Array(
+                [629.172912597656, 628.130920410156]
+            ),
+            depthToColor: [
+                0.999902248382, 0.010088876821, 0.009682051837, 0,
+                -0.010075648315, 0.9999482631683, -0.001414125669, 0,
+                0.009695817716, 0.001316434470, 0.99995213747, 0,
+                0.036090422422,  0.000611198542174, -0.00184865354, 1
+            ],
+            depthDistortionModel: distortionModels.NONE,
+            depthDistortioncoeffs: [0, 0, 0, 0, 0],
+            colorDistortionModel: distortionModels.NONE,
+            colorDistortioncoeffs: [0, 0, 0, 0, 0],
         };
     } else {
         throw {
