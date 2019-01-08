@@ -159,7 +159,8 @@ function setupTextures(gl, program) {
 
 // Returns the calibration data.
 async function setupCamera() {
-    var [depth_stream, color_stream] = await DepthCamera.getStreams();
+    var depth_stream = await DepthCamera.getDepthStream();
+    var color_stream = await DepthCamera.getColorStreamForDepthStream(depth_stream);
     var video = document.getElementById("colorStream");
     video.srcObject = color_stream;
     var depth_video = document.getElementById("depthStream");
